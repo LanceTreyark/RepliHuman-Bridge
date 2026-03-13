@@ -1,0 +1,31 @@
+{
+  "id": "bridge",
+  "name": "RepliHuman Bridge",
+  "description": "Channel plugin for the RepliHuman Bridge communication platform",
+  "channels": ["bridge"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Bridge server URL (e.g. https://bridge.replihuman.com)"
+      },
+      "token": {
+        "type": "string",
+        "description": "Bridge API token"
+      },
+      "channels": {
+        "type": "object",
+        "description": "Channel ID to name mappings",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "defaultChannel": {
+        "type": "string",
+        "description": "Default channel ID for outbound messages"
+      }
+    }
+  }
+}

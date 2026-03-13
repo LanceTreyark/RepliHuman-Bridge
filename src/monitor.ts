@@ -84,20 +84,25 @@ export async function monitorBridgeProvider(
     logger.warn?.(`Bridge Socket.IO disconnected: ${reason}`);
   });
 
+  socket.onAny((event: string, ...args: any[]) => {
+    logger.info?.(`Bridge socket event: ${event}`);
+  });
+
   socket.on("new_message", async (data: any) => {
     try {
-      // Skip our own messages
-      if (data.author?.is_bot) return;
+      logger.info?.(`Bridge new_message: user=${data.username} type=${data.account_type} content=${(data.content || '').slice(0, 80)}`);
+      // Skip our own messages (bot/agent accounts with our name)
+      if (data.account_type !== "human" && data.username === "Viktor") return;
 
       const message: BridgeInboundMessage = {
         messageId: String(data.id || Date.now()),
         channelId: String(data.channel_id || "1"),
         channelName: data.channel_name || `channel-${data.channel_id}`,
         content: data.content || "",
-        senderName: data.author?.display_name || data.author?.username || "unknown",
-        senderId: String(data.author?.id || "0"),
+        senderName: data.username || "unknown",
+        senderId: String(data.author_id || "0"),
         timestamp: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
-        isGroup: true, // Bridge channels are always group-like
+        isGroup: true,
       };
 
       opts.statusSink?.({ lastInboundAt: Date.now() });
@@ -150,6 +155,8 @@ async function handleBridgeInbound(params: {
 }) {
   const core = getBridgeRuntime();
   const { message, config, statusSink } = params;
+  const logger = core.logging.getChildLogger({ channel: "bridge" });
+  logger.info?.(`handleBridgeInbound: from=${message.senderName} in ch=${message.channelId} content=${message.content.slice(0,60)}`);
 
   const peerId = `bridge:channel:${message.channelId}`;
 

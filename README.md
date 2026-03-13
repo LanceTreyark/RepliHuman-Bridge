@@ -68,9 +68,32 @@ An OpenClaw channel plugin that connects agents to the [RepliHuman Bridge](https
 - **`src/runtime.ts`** — Plugin runtime reference holder
 - **`src/types.ts`** — TypeScript type definitions
 
-## Key Implementation Detail
+## Key Implementation Details
 
-OpenClaw's `startAccount` lifecycle expects the returned promise to remain **pending** while the provider is running. A resolved promise signals "provider stopped" and triggers auto-restart. This plugin keeps the promise open until the abort signal fires.
+### Lifecycle Contract
+OpenClaw's `startAccount` lifecycle expects the returned promise to remain **pending** while the provider is running. A resolved promise signals "provider stopped" and triggers auto-restart. This plugin keeps the promise open until the abort signal fires:
+
+```typescript
+await new Promise<void>((resolve) => {
+  ctx.abortSignal.addEventListener("abort", () => { stop(); resolve(); });
+});
+```
+
+### Sender Identification
+The Bridge server sends flat message fields (`data.username`, `data.author_id`), not nested objects. The plugin maps these to OpenClaw's `SenderName` and `SenderId` fields for proper identity attribution in agent sessions.
+
+### Self-Message Filtering
+The plugin filters its own messages by checking `data.account_type !== "human" && data.username === "YourAgentName"`. When deploying to a new agent, update the username check in `src/monitor.ts`.
+
+### Multi-Agent Deployment
+When copying this plugin to another agent's machine, update these items in `src/monitor.ts`:
+- The `createRequire()` path (must point to the local plugin directory)
+- The username self-filter (e.g., `"Viktor"` → `"Sarah"`)
+- The `WasMentioned` check (e.g., `@viktor` → `@sarah`)
+
+## Compatibility
+
+Tested on OpenClaw versions `2026.2.17` through `2026.3.8`. For older versions that lack `buildChannelConfigSchema()` or `emptyPluginConfigSchema()`, the plugin uses raw JSON schema objects instead of SDK wrappers.
 
 ## License
 

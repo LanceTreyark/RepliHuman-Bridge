@@ -4,6 +4,10 @@ import {
   createReplyPrefixOptions,
   formatTextWithAttachmentLinks,
   resolveOutboundMediaUrls,
+  recordPendingHistoryEntry,
+  buildPendingHistoryContextFromMap,
+  DEFAULT_GROUP_HISTORY_LIMIT,
+  type HistoryEntry,
   type OpenClawConfig,
   type RuntimeEnv,
 } from "openclaw/plugin-sdk";
@@ -12,6 +16,14 @@ import { resolveBridgeConfig, sendBridgeMessage } from "./send.js";
 import type { BridgeConfig, BridgeInboundMessage } from "./types.js";
 
 const CHANNEL_ID = "bridge" as const;
+
+/** In-memory chat history per channel, used to inject recent messages as context. */
+const channelHistories = new Map<string, HistoryEntry[]>();
+const HISTORY_LIMIT = DEFAULT_GROUP_HISTORY_LIMIT;
+
+function formatHistoryEntry(entry: HistoryEntry): string {
+  return `${entry.sender}: ${entry.body}`;
+}
 
 export type BridgeMonitorOptions = {
   config?: BridgeConfig;
@@ -59,7 +71,7 @@ export async function monitorBridgeProvider(
 
   socket.on("connect", async () => {
     logger.info?.("Bridge Socket.IO connected");
-    // Join all channels
+    // Join all channels and seed history from recent messages
     try {
       const serversRes = await fetch(`${bridgeCfg.url}/api/servers`, {
         headers: { Authorization: `Bearer ${bridgeCfg.token}` },
@@ -73,6 +85,35 @@ export async function monitorBridgeProvider(
         for (const ch of channels) {
           socket.emit("join_channel", { channelId: ch.id });
           logger.info?.(`Joined Bridge channel #${ch.name} (${ch.id})`);
+
+          // Seed history from recent messages so agents have context on connect
+          try {
+            const histRes = await fetch(`${bridgeCfg.url}/api/channels/${ch.id}/messages?limit=${HISTORY_LIMIT}`, {
+              headers: { Authorization: `Bearer ${bridgeCfg.token}` },
+            });
+            const msgs = await histRes.json() as any[];
+            const histKey = `bridge:${ch.id}`;
+            // Messages come newest-first, reverse for chronological order
+            const sorted = [...msgs].reverse();
+            for (const m of sorted) {
+              const senderName = m.author?.username || m.username || "unknown";
+              if (senderName === "Viktor") continue; // skip own messages
+              recordPendingHistoryEntry({
+                historyMap: channelHistories,
+                historyKey: histKey,
+                entry: {
+                  sender: senderName,
+                  body: m.content || "",
+                  timestamp: m.createdAt ? new Date(m.createdAt).getTime() : undefined,
+                  messageId: String(m.id),
+                },
+                limit: HISTORY_LIMIT,
+              });
+            }
+            logger.info?.(`Seeded ${sorted.length} history entries for #${ch.name}`);
+          } catch (histErr) {
+            logger.warn?.(`Failed to seed history for #${ch.name}: ${String(histErr)}`);
+          }
         }
       }
     } catch (err) {
@@ -158,7 +199,10 @@ async function handleBridgeInbound(params: {
   const logger = core.logging.getChildLogger({ channel: "bridge" });
   logger.info?.(`handleBridgeInbound: from=${message.senderName} in ch=${message.channelId} content=${message.content.slice(0,60)}`);
 
-  const peerId = `bridge:channel:${message.channelId}`;
+  // All Bridge channels share one session context so the agent maintains
+  // continuity across channels.  The outbound reply still targets the
+  // originating channel via message.channelId.
+  const peerId = `bridge:unified`;
 
   const route = core.channel.routing.resolveAgentRoute({
     cfg: config as OpenClawConfig,
@@ -183,13 +227,40 @@ async function handleBridgeInbound(params: {
     sessionKey: route.sessionKey,
   });
 
+  // Build chat history context from recent messages in this channel
+  const historyKey = `bridge:${message.channelId}`;
+  const historyContext = buildPendingHistoryContextFromMap({
+    historyMap: channelHistories,
+    historyKey,
+    limit: HISTORY_LIMIT,
+    currentMessage: message.content,
+    formatEntry: formatHistoryEntry,
+  });
+
+  // Record this message into history for future context
+  recordPendingHistoryEntry({
+    historyMap: channelHistories,
+    historyKey,
+    entry: {
+      sender: message.senderName,
+      body: message.content,
+      timestamp: message.timestamp,
+      messageId: message.messageId,
+    },
+    limit: HISTORY_LIMIT,
+  });
+
+  const bodyWithHistory = historyContext
+    ? `${historyContext}\n\n${message.content}`
+    : message.content;
+
   const body = core.channel.reply.formatAgentEnvelope({
     channel: "Bridge",
     from: `${message.senderName} in #${message.channelName}`,
     timestamp: message.timestamp,
     previousTimestamp,
     envelope: envelopeOptions,
-    body: message.content,
+    body: bodyWithHistory,
   });
 
   const ctxPayload = core.channel.reply.finalizeInboundContext({
@@ -238,6 +309,17 @@ async function handleBridgeInbound(params: {
     );
     if (!text) return;
     await sendBridgeMessage(message.channelId, text);
+    // Record our own reply in history so it appears as context for other agents
+    recordPendingHistoryEntry({
+      historyMap: channelHistories,
+      historyKey: `bridge:${message.channelId}`,
+      entry: {
+        sender: "Viktor",
+        body: text,
+        timestamp: Date.now(),
+      },
+      limit: HISTORY_LIMIT,
+    });
     statusSink?.({ lastOutboundAt: Date.now() });
   });
 

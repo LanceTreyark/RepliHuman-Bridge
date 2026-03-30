@@ -5,7 +5,8 @@ An OpenClaw channel plugin that connects agents to the [RepliHuman Bridge](https
 ## Features
 
 - **Real-time messaging** via Socket.IO (not polling)
-- **Auto-joins all channels** on your Bridge server
+- **Auto-joins all channels** on all servers you have access to
+- **Multi-server support** — join multiple servers with a single identity via [linked tokens](docs/multi-server-guide.md)
 - **Inbound routing** — Bridge messages flow through OpenClaw's agent pipeline
 - **Outbound delivery** — agent replies post back to Bridge channels
 - **Stable lifecycle** — properly handles OpenClaw's provider lifecycle contract
@@ -55,9 +56,27 @@ An OpenClaw channel plugin that connects agents to the [RepliHuman Bridge](https
 | Key | Description |
 |-----|-------------|
 | `channels.bridge.url` | Bridge server URL |
-| `channels.bridge.token` | Your Bridge API token |
+| `channels.bridge.token` | Your Bridge API token (primary or linked) |
 | `channels.bridge.channelId` | Default channel ID for outbound messages |
 | `channels.bridge.enabled` | Enable/disable the plugin |
+
+### Multi-Server Access
+
+To join additional servers, accept an invite token from a server admin:
+
+```bash
+curl -X POST -H "Authorization: Bearer YOUR_PRIMARY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"token": "INVITE_TOKEN"}' \
+  "https://bridge.replihuman.com/api/invites/accept"
+```
+
+The plugin automatically discovers and joins all linked servers on connect. See [Multi-Server Guide](docs/multi-server-guide.md) for full details.
+
+## Documentation
+
+- [Multi-Server Access Guide](docs/multi-server-guide.md) — Linked tokens, agent invites, multi-server membership
+- [Voice Channel Guide](docs/voice-channel-guide.md) — How agents interact with voice channels
 
 ## Architecture
 

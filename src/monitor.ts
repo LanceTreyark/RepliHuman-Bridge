@@ -1,16 +1,24 @@
 import { createRequire } from "node:module";
 import {
   createNormalizedOutboundDeliverer,
-  createReplyPrefixOptions,
   formatTextWithAttachmentLinks,
   resolveOutboundMediaUrls,
+} from "openclaw/plugin-sdk/reply-payload";
+import {
+  createReplyPrefixOptions,
+} from "openclaw/plugin-sdk/channel-reply-pipeline";
+import {
   recordPendingHistoryEntry,
   buildPendingHistoryContextFromMap,
   DEFAULT_GROUP_HISTORY_LIMIT,
   type HistoryEntry,
+} from "openclaw/plugin-sdk/reply-history";
+import {
   type OpenClawConfig,
+} from "openclaw/plugin-sdk/core";
+import {
   type RuntimeEnv,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/runtime-env";
 import { getBridgeRuntime } from "./runtime.js";
 import { resolveBridgeConfig, sendBridgeMessage } from "./send.js";
 import type { BridgeConfig, BridgeInboundMessage } from "./types.js";
@@ -23,6 +31,43 @@ const HISTORY_LIMIT = DEFAULT_GROUP_HISTORY_LIMIT;
 
 function formatHistoryEntry(entry: HistoryEntry): string {
   return `${entry.sender}: ${entry.body}`;
+}
+
+function normalizeIdentity(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .trim()
+    .toLowerCase();
+}
+
+function matchesConfiguredIdentity(value: string, candidates: string[]): boolean {
+  const normalized = normalizeIdentity(value);
+  return candidates.some((candidate) => normalizeIdentity(candidate) === normalized);
+}
+
+function normalizeMentionText(value: string): string {
+  return normalizeIdentity(value).replace(/\s+/g, "");
+}
+
+function wasAgentMentioned(content: string, mentionNames: string[]): boolean {
+  const normalizedContent = normalizeMentionText(content);
+  return mentionNames.some((name) => {
+    const mention = `@${normalizeMentionText(name)}`;
+    return mention.length > 1 && normalizedContent.includes(mention);
+  });
+}
+
+function isAllowedInbound(message: BridgeInboundMessage, allowFrom: string[]): boolean {
+  if (allowFrom.length === 0) return true;
+  const allowed = allowFrom.map(normalizeIdentity);
+  return [
+    message.senderName,
+    message.senderId,
+    message.channelId,
+    message.channelName,
+    `#${message.channelName}`,
+  ].some((value) => allowed.includes(normalizeIdentity(value)));
 }
 
 export type BridgeMonitorOptions = {
@@ -49,7 +94,7 @@ export async function monitorBridgeProvider(
 
     // Load socket.io-client  
     logger.info?.("Loading socket.io-client...");
-    const _require = createRequire("/home/viktor/.openclaw/workspace/openclaw-bridge-plugin/src/monitor.ts");
+    const _require = createRequire(import.meta.url);
     const { io } = _require("socket.io-client") as any;
     logger.info?.("socket.io-client loaded successfully");
 
@@ -97,7 +142,7 @@ export async function monitorBridgeProvider(
             const sorted = [...msgs].reverse();
             for (const m of sorted) {
               const senderName = m.author?.username || m.username || "unknown";
-              if (senderName === "Viktor") continue; // skip own messages
+              if (matchesConfiguredIdentity(senderName, bridgeCfg.selfNames)) continue;
               recordPendingHistoryEntry({
                 historyMap: channelHistories,
                 historyKey: histKey,
@@ -132,8 +177,8 @@ export async function monitorBridgeProvider(
   socket.on("new_message", async (data: any) => {
     try {
       logger.info?.(`Bridge new_message: user=${data.username} type=${data.account_type} content=${(data.content || '').slice(0, 80)}`);
-      // Skip our own messages (bot/agent accounts with our name)
-      if (data.account_type !== "human" && data.username === "Viktor") return;
+      // Skip our own messages (bot/agent accounts with our configured name).
+      if (data.account_type !== "human" && matchesConfiguredIdentity(data.username || "", bridgeCfg.selfNames)) return;
 
       const message: BridgeInboundMessage = {
         messageId: String(data.id || Date.now()),
@@ -145,6 +190,11 @@ export async function monitorBridgeProvider(
         timestamp: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
         isGroup: true,
       };
+
+      if (!isAllowedInbound(message, bridgeCfg.allowFrom)) {
+        logger.info?.(`Bridge inbound skipped by allowFrom: user=${message.senderName} channel=${message.channelId}`);
+        return;
+      }
 
       opts.statusSink?.({ lastInboundAt: Date.now() });
       await handleBridgeInbound({ message, config: cfg, runtime: opts.runtime, statusSink: opts.statusSink });
@@ -278,7 +328,7 @@ async function handleBridgeInbound(params: {
     GroupSubject: `#${message.channelName}`,
     Provider: CHANNEL_ID,
     Surface: CHANNEL_ID,
-    WasMentioned: message.content.toLowerCase().includes("@viktor"),
+    WasMentioned: wasAgentMentioned(message.content, resolveBridgeConfig(config).mentionNames),
     MessageSid: message.messageId,
     Timestamp: message.timestamp,
     OriginatingChannel: CHANNEL_ID,
@@ -314,7 +364,7 @@ async function handleBridgeInbound(params: {
       historyMap: channelHistories,
       historyKey: `bridge:${message.channelId}`,
       entry: {
-        sender: "Viktor",
+        sender: resolveBridgeConfig(config).agentName,
         body: text,
         timestamp: Date.now(),
       },

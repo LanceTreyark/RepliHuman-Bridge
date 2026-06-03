@@ -1,5 +1,8 @@
-import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
+import {
+  emptyPluginConfigSchema,
+  type ChannelPlugin,
+  type OpenClawPluginApi,
+} from "openclaw/plugin-sdk/core";
 import { bridgePlugin } from "./src/channel.js";
 import { setBridgeRuntime } from "./src/runtime.js";
 

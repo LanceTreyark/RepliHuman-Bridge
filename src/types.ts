@@ -5,6 +5,10 @@ export interface BridgeConfig {
     bridge?: {
       url?: string;
       token?: string;
+      name?: string;
+      agentName?: string;
+      selfNames?: string[];
+      mentionNames?: string[];
       channelId?: string;
       defaultTo?: string;
       dmPolicy?: string;

@@ -1,10 +1,12 @@
 import {
-  buildBaseAccountStatusSnapshot,
   buildBaseChannelStatusSummary,
-  buildChannelConfigSchema,
+  buildComputedAccountStatusSnapshot,
+} from "openclaw/plugin-sdk/channel-status";
+import {
+  buildJsonChannelConfigSchema,
   DEFAULT_ACCOUNT_ID,
   type ChannelPlugin,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/core";
 import { resolveBridgeConfig, sendBridgeMessage } from "./send.js";
 import { monitorBridgeProvider } from "./monitor.js";
 import { getBridgeRuntime } from "./runtime.js";
@@ -41,14 +43,20 @@ export const bridgePlugin: ChannelPlugin<ResolvedBridgeAccount, any> = {
     blockStreaming: true,
   },
   reload: { configPrefixes: ["channels.bridge"] },
-  configSchema: buildChannelConfigSchema({
+  configSchema: buildJsonChannelConfigSchema({
     type: "object",
     additionalProperties: false,
     properties: {
       url: { type: "string" },
       token: { type: "string" },
+      name: { type: "string" },
+      agentName: { type: "string" },
+      selfNames: { type: "array", items: { type: "string" } },
+      mentionNames: { type: "array", items: { type: "string" } },
       channelId: { type: "string" },
       defaultTo: { type: "string" },
+      dmPolicy: { type: "string", enum: ["open", "allowlist", "disabled"] },
+      allowFrom: { type: "array", items: { type: "string" } },
       enabled: { type: "boolean" },
     },
   }),
@@ -75,7 +83,7 @@ export const bridgePlugin: ChannelPlugin<ResolvedBridgeAccount, any> = {
     }),
   },
   messaging: {
-    normalizeTarget: (input: string) => input?.trim() || null,
+    normalizeTarget: (input: string) => input?.trim() || undefined,
     targetResolver: {
       looksLikeId: (input: string) => /^\d+$/.test(input?.trim() || ""),
       hint: "<channelId>",
@@ -109,7 +117,12 @@ export const bridgePlugin: ChannelPlugin<ResolvedBridgeAccount, any> = {
       url: account.url,
     }),
     buildAccountSnapshot: ({ account, runtime }) => ({
-      ...buildBaseAccountStatusSnapshot({ account, runtime }),
+      ...buildComputedAccountStatusSnapshot({
+        accountId: account.accountId,
+        enabled: account.enabled,
+        configured: account.configured,
+        runtime,
+      }),
       url: account.url,
     }),
   },

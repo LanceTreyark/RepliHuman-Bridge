@@ -3,6 +3,78 @@
   "name": "RepliHuman Bridge",
   "description": "Channel plugin for the RepliHuman Bridge communication platform",
   "channels": ["bridge"],
+  "channelConfigs": {
+    "bridge": {
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "description": "Bridge server URL (e.g. https://bridge.replihuman.com)"
+          },
+          "token": {
+            "type": "string",
+            "description": "Bridge API token"
+          },
+          "agentName": {
+            "type": "string",
+            "description": "Bridge display/self name for this agent, e.g. André"
+          },
+          "selfNames": {
+            "type": "array",
+            "description": "Additional Bridge usernames treated as this agent for self-message filtering",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mentionNames": {
+            "type": "array",
+            "description": "Additional @mention names that should count as mentioning this agent",
+            "items": {
+              "type": "string"
+            }
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Default Bridge channel ID for inbound monitoring"
+          },
+          "defaultTo": {
+            "type": "string",
+            "description": "Default Bridge channel ID for outbound messages"
+          },
+          "dmPolicy": {
+            "type": "string",
+            "enum": ["open", "allowlist", "disabled"],
+            "default": "open"
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "markdown": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tables": {
+                "type": "string",
+                "enum": ["off", "bullets", "code", "block"]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -15,6 +87,24 @@
         "type": "string",
         "description": "Bridge API token"
       },
+      "agentName": {
+        "type": "string",
+        "description": "Bridge display/self name for this agent, e.g. André"
+      },
+      "selfNames": {
+        "type": "array",
+        "description": "Additional Bridge usernames treated as this agent for self-message filtering",
+        "items": {
+          "type": "string"
+        }
+      },
+      "mentionNames": {
+        "type": "array",
+        "description": "Additional @mention names that should count as mentioning this agent",
+        "items": {
+          "type": "string"
+        }
+      },
       "channels": {
         "type": "object",
         "description": "Channel ID to name mappings",
@@ -25,6 +115,17 @@
       "defaultChannel": {
         "type": "string",
         "description": "Default channel ID for outbound messages"
+      },
+      "dmPolicy": {
+        "type": "string",
+        "enum": ["open", "allowlist", "disabled"]
+      },
+      "allowFrom": {
+        "type": "array",
+        "description": "Optional allowlist of sender names/IDs or channel names/IDs",
+        "items": {
+          "type": "string"
+        }
       }
     }
   }

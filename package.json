@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "OpenClaw channel plugin for RepliHuman Bridge",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"
@@ -10,5 +13,11 @@
   },
   "dependencies": {
     "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "openclaw": "^2026.5.28",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
   }
 }
